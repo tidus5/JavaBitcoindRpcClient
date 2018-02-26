@@ -20,6 +20,11 @@
  */
 package wf.bitcoin.javabitcoindrpcclient;
 
+import static wf.bitcoin.javabitcoindrpcclient.MapWrapper.mapCTime;
+import static wf.bitcoin.javabitcoindrpcclient.MapWrapper.mapDouble;
+import static wf.bitcoin.javabitcoindrpcclient.MapWrapper.mapInt;
+import static wf.bitcoin.javabitcoindrpcclient.MapWrapper.mapStr;
+
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -44,13 +49,13 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLSocketFactory;
 
 import wf.bitcoin.krotjson.Base64Coder;
 import wf.bitcoin.krotjson.JSON;
-import static wf.bitcoin.javabitcoindrpcclient.MapWrapper.*;
 
 /**
  *
@@ -164,6 +169,8 @@ public class BitcoinJSONRPCClient implements BitcoindRpcClient {
   }
 
   private static byte[] loadStream(InputStream in, boolean close) throws IOException {
+	if(in == null)
+		return "".getBytes();
     ByteArrayOutputStream o = new ByteArrayOutputStream();
     byte[] buffer = new byte[1024];
     for (;;) {
@@ -179,7 +186,7 @@ public class BitcoinJSONRPCClient implements BitcoindRpcClient {
     return o.toByteArray();
   }
 
-  public Object loadResponse(InputStream in, Object expectedID, boolean close) throws IOException, BitcoinRpcException {
+  public Object loadResponse(InputStream in, Object expectedID, boolean close) throws IOException, BitcoinRPCException {
     try {
       String r = new String(loadStream(in, close), QUERY_CHARSET);
       logger.log(Level.FINE, "Bitcoin JSON-RPC response:\n{0}", r);
@@ -190,7 +197,7 @@ public class BitcoinJSONRPCClient implements BitcoindRpcClient {
           throw new BitcoinRPCException("Wrong response ID (expected: " + String.valueOf(expectedID) + ", response: " + response.get("id") + ")");
 
         if (response.get("error") != null)
-          throw new BitcoinRpcException(JSON.stringify(response.get("error")));
+          throw new BitcoinRPCException(JSON.stringify(response.get("error")));
 
         return response.get("result");
       } catch (ClassCastException ex) {
@@ -202,7 +209,7 @@ public class BitcoinJSONRPCClient implements BitcoindRpcClient {
     }
   }
 
-  public Object query(String method, Object... o) throws BitcoinRpcException {
+  public Object query(String method, Object... o) throws BitcoinRPCException {
     HttpURLConnection conn;
     try {
       conn = (HttpURLConnection) noAuthURL.openConnection();
@@ -225,15 +232,15 @@ public class BitcoinJSONRPCClient implements BitcoindRpcClient {
       conn.getOutputStream().close();
       int responseCode = conn.getResponseCode();
       if (responseCode != 200)
-        throw new BitcoinRPCException(method, Arrays.deepToString(o), responseCode, conn.getResponseMessage(), new String(loadStream(conn.getErrorStream(), true)));
+    	  throw new BitcoinRPCException("RPC Query Failed (method: "+ method +", params: " + Arrays.deepToString(o) + ", response header: "+ responseCode + " " + conn.getResponseMessage() + ", response: " + new String(loadStream(conn.getErrorStream(), true)));
       return loadResponse(conn.getInputStream(), "1", true);
     } catch (IOException ex) {
-      throw new BitcoinRPCException(method, Arrays.deepToString(o), ex);
+    	throw new BitcoinRPCException("RPC Query Failed (method: "+ method +", params: " + Arrays.deepToString(o) + ")", ex);
     }
   }
 
   @Override
-  public String createRawTransaction(List<TxInput> inputs, List<TxOutput> outputs) throws BitcoinRpcException {
+  public String createRawTransaction(List<TxInput> inputs, List<TxOutput> outputs) throws BitcoinRPCException {
     List<Map> pInputs = new ArrayList<>();
 
     for (final TxInput txInput : inputs) {
@@ -258,37 +265,37 @@ public class BitcoinJSONRPCClient implements BitcoindRpcClient {
   }
 
   @Override
-  public String dumpPrivKey(String address) throws BitcoinRpcException {
+  public String dumpPrivKey(String address) throws BitcoinRPCException {
     return (String) query("dumpprivkey", address);
   }
 
   @Override
-  public String getAccount(String address) throws BitcoinRpcException {
+  public String getAccount(String address) throws BitcoinRPCException {
     return (String) query("getaccount", address);
   }
 
   @Override
-  public String getAccountAddress(String address) throws BitcoinRpcException {
+  public String getAccountAddress(String address) throws BitcoinRPCException {
     return (String) query("getaccountaddress", address);
   }
 
   @Override
-  public List<String> getAddressesByAccount(String account) throws BitcoinRpcException {
+  public List<String> getAddressesByAccount(String account) throws BitcoinRPCException {
     return (List<String>) query("getaddressesbyaccount", account);
   }
 
   @Override
-  public double getBalance() throws BitcoinRpcException {
+  public double getBalance() throws BitcoinRPCException {
     return ((Number) query("getbalance")).doubleValue();
   }
 
   @Override
-  public double getBalance(String account) throws BitcoinRpcException {
+  public double getBalance(String account) throws BitcoinRPCException {
     return ((Number) query("getbalance", account)).doubleValue();
   }
 
   @Override
-  public double getBalance(String account, int minConf) throws BitcoinRpcException {
+  public double getBalance(String account, int minConf) throws BitcoinRPCException {
     return ((Number) query("getbalance", account, minConf)).doubleValue();
   }
 
@@ -858,14 +865,14 @@ public class BitcoinJSONRPCClient implements BitcoindRpcClient {
     }
 
     @Override
-    public Block previous() throws BitcoinRpcException {
+    public Block previous() throws BitcoinRPCException {
       if (!m.containsKey("previousblockhash"))
         return null;
       return getBlock(previousHash());
     }
 
     @Override
-    public Block next() throws BitcoinRpcException {
+    public Block next() throws BitcoinRPCException {
       if (!m.containsKey("nextblockhash"))
         return null;
       return getBlock(nextHash());
@@ -874,53 +881,53 @@ public class BitcoinJSONRPCClient implements BitcoindRpcClient {
   }
 
   @Override
-  public Block getBlock(int height) throws BitcoinRpcException {
+  public Block getBlock(int height) throws BitcoinRPCException {
     String hash = (String) query("getblockhash", height);
     return getBlock(hash);
   }
 
   @Override
-  public Block getBlock(String blockHash) throws BitcoinRpcException {
+  public Block getBlock(String blockHash) throws BitcoinRPCException {
     return new BlockMapWrapper((Map) query("getblock", blockHash));
   }
 
   @Override
-  public String getBlockHash(int height) throws BitcoinRpcException {
+  public String getBlockHash(int height) throws BitcoinRPCException {
     return (String) query("getblockhash", height);
   }
 
   @Override
-  public BlockChainInfo getBlockChainInfo() throws BitcoinRpcException {
+  public BlockChainInfo getBlockChainInfo() throws BitcoinRPCException {
     return new BlockChainInfoMapWrapper((Map) query("getblockchaininfo"));
   }
 
   @Override
-  public int getBlockCount() throws BitcoinRpcException {
+  public int getBlockCount() throws BitcoinRPCException {
     return ((Number) query("getblockcount")).intValue();
   }
 
   @Override
-  public Info getInfo() throws BitcoinRpcException {
+  public Info getInfo() throws BitcoinRPCException {
     return new InfoWrapper((Map) query("getinfo"));
   }
 
   @Override
-  public TxOutSetInfo getTxOutSetInfo() throws BitcoinRpcException {
+  public TxOutSetInfo getTxOutSetInfo() throws BitcoinRPCException {
     return new TxOutSetInfoWrapper((Map) query("gettxoutsetinfo"));
   }
 
   @Override
-  public NetworkInfo getNetworkInfo() throws BitcoinRpcException {
+  public NetworkInfo getNetworkInfo() throws BitcoinRPCException {
     return new NetworkInfoWrapper((Map) query("getnetworkinfo"));
   }
 
   @Override
-  public MiningInfo getMiningInfo() throws BitcoinRpcException {
+  public MiningInfo getMiningInfo() throws BitcoinRPCException {
     return new MiningInfoWrapper((Map) query("getmininginfo"));
   }
 
   @Override
-  public List<NodeInfo> getAddedNodeInfo(boolean dummy, String node) throws BitcoinRpcException {
+  public List<NodeInfo> getAddedNodeInfo(boolean dummy, String node) throws BitcoinRPCException {
     List<Map> list = ((List<Map>) query("getaddednodeinfo", dummy, node));
     List<NodeInfo> nodeInfoList = new LinkedList<NodeInfo>();
     for(Map m: list){
@@ -931,7 +938,7 @@ public class BitcoinJSONRPCClient implements BitcoindRpcClient {
   }
 
   @Override
-  public MultiSig createMultiSig(int nRequired, List<String> keys) throws BitcoinRpcException {
+  public MultiSig createMultiSig(int nRequired, List<String> keys) throws BitcoinRPCException {
     return new MultiSigWrapper ((Map) query("createmultisig", nRequired, keys));
   }
 
@@ -941,27 +948,27 @@ public class BitcoinJSONRPCClient implements BitcoindRpcClient {
   }
 
   @Override
-  public String getNewAddress() throws BitcoinRpcException {
+  public String getNewAddress() throws BitcoinRPCException {
     return (String) query("getnewaddress");
   }
 
   @Override
-  public String getNewAddress(String account) throws BitcoinRpcException {
+  public String getNewAddress(String account) throws BitcoinRPCException {
     return (String) query("getnewaddress", account);
   }
 
   @Override
-  public List<String> getRawMemPool() throws BitcoinRpcException {
+  public List<String> getRawMemPool() throws BitcoinRPCException {
     return (List<String>) query("getrawmempool");
   }
 
   @Override
-  public String getBestBlockHash() throws BitcoinRpcException {
+  public String getBestBlockHash() throws BitcoinRPCException {
     return (String) query("getbestblockhash");
   }
 
   @Override
-  public String getRawTransactionHex(String txId) throws BitcoinRpcException {
+  public String getRawTransactionHex(String txId) throws BitcoinRPCException {
     return (String) query("getrawtransaction", txId);
   }
 
@@ -1036,7 +1043,7 @@ public class BitcoinJSONRPCClient implements BitcoindRpcClient {
       public RawTransaction getTransaction() {
         try {
           return getRawTransaction(mapStr("txid"));
-        } catch (BitcoinRpcException ex) {
+        } catch (BitcoinRPCException ex) {
           throw new RuntimeException(ex);
         }
       }
@@ -1279,48 +1286,48 @@ public class BitcoinJSONRPCClient implements BitcoindRpcClient {
   }
 
   @Override
-  public RawTransaction getRawTransaction(String txId) throws BitcoinRpcException {
+  public RawTransaction getRawTransaction(String txId) throws BitcoinRPCException {
     return new RawTransactionImpl((Map) query("getrawtransaction", txId, 1));
   }
 
   @Override
-  public double getReceivedByAddress(String address) throws BitcoinRpcException {
+  public double getReceivedByAddress(String address) throws BitcoinRPCException {
     return ((Number) query("getreceivedbyaddress", address)).doubleValue();
   }
 
   @Override
-  public double getReceivedByAddress(String address, int minConf) throws BitcoinRpcException {
+  public double getReceivedByAddress(String address, int minConf) throws BitcoinRPCException {
     return ((Number) query("getreceivedbyaddress", address, minConf)).doubleValue();
   }
 
   @Override
-  public void importPrivKey(String bitcoinPrivKey) throws BitcoinRpcException {
+  public void importPrivKey(String bitcoinPrivKey) throws BitcoinRPCException {
     query("importprivkey", bitcoinPrivKey);
   }
 
   @Override
-  public void importPrivKey(String bitcoinPrivKey, String label) throws BitcoinRpcException {
+  public void importPrivKey(String bitcoinPrivKey, String label) throws BitcoinRPCException {
     query("importprivkey", bitcoinPrivKey, label);
   }
 
   @Override
-  public void importPrivKey(String bitcoinPrivKey, String label, boolean rescan) throws BitcoinRpcException {
+  public void importPrivKey(String bitcoinPrivKey, String label, boolean rescan) throws BitcoinRPCException {
     query("importprivkey", bitcoinPrivKey, label, rescan);
   }
 
   @Override
-  public Object importAddress(String address, String label, boolean rescan) throws BitcoinRpcException {
+  public Object importAddress(String address, String label, boolean rescan) throws BitcoinRPCException {
     query("importaddress", address, label, rescan);
       return null;
   }
 
   @Override
-  public Map<String, Number> listAccounts() throws BitcoinRpcException {
+  public Map<String, Number> listAccounts() throws BitcoinRPCException {
     return (Map) query("listaccounts");
   }
 
   @Override
-  public Map<String, Number> listAccounts(int minConf) throws BitcoinRpcException {
+  public Map<String, Number> listAccounts(int minConf) throws BitcoinRPCException {
     return (Map) query("listaccounts", minConf);
   }
 
@@ -1372,17 +1379,17 @@ public class BitcoinJSONRPCClient implements BitcoindRpcClient {
   }
 
   @Override
-  public List<ReceivedAddress> listReceivedByAddress() throws BitcoinRpcException {
+  public List<ReceivedAddress> listReceivedByAddress() throws BitcoinRPCException {
     return new ReceivedAddressListWrapper((List) query("listreceivedbyaddress"));
   }
 
   @Override
-  public List<ReceivedAddress> listReceivedByAddress(int minConf) throws BitcoinRpcException {
+  public List<ReceivedAddress> listReceivedByAddress(int minConf) throws BitcoinRPCException {
     return new ReceivedAddressListWrapper((List) query("listreceivedbyaddress", minConf));
   }
 
   @Override
-  public List<ReceivedAddress> listReceivedByAddress(int minConf, boolean includeEmpty) throws BitcoinRpcException {
+  public List<ReceivedAddress> listReceivedByAddress(int minConf, boolean includeEmpty) throws BitcoinRPCException {
     return new ReceivedAddressListWrapper((List) query("listreceivedbyaddress", minConf, includeEmpty));
   }
 
@@ -1473,7 +1480,7 @@ public class BitcoinJSONRPCClient implements BitcoindRpcClient {
           if (raw == null)
             try {
               raw = getRawTransaction(txId());
-            } catch (BitcoinRpcException ex) {
+            } catch (BitcoinRPCException ex) {
               throw new RuntimeException(ex);
             }
           return raw;
@@ -1512,37 +1519,37 @@ public class BitcoinJSONRPCClient implements BitcoindRpcClient {
   }
 
   @Override
-  public TransactionsSinceBlock listSinceBlock() throws BitcoinRpcException {
+  public TransactionsSinceBlock listSinceBlock() throws BitcoinRPCException {
     return new TransactionsSinceBlockImpl((Map) query("listsinceblock"));
   }
 
   @Override
-  public TransactionsSinceBlock listSinceBlock(String blockHash) throws BitcoinRpcException {
+  public TransactionsSinceBlock listSinceBlock(String blockHash) throws BitcoinRPCException {
     return new TransactionsSinceBlockImpl((Map) query("listsinceblock", blockHash));
   }
 
   @Override
-  public TransactionsSinceBlock listSinceBlock(String blockHash, int targetConfirmations) throws BitcoinRpcException {
+  public TransactionsSinceBlock listSinceBlock(String blockHash, int targetConfirmations) throws BitcoinRPCException {
     return new TransactionsSinceBlockImpl((Map) query("listsinceblock", blockHash, targetConfirmations));
   }
 
   @Override
-  public List<Transaction> listTransactions() throws BitcoinRpcException {
+  public List<Transaction> listTransactions() throws BitcoinRPCException {
     return new TransactionListMapWrapper((List) query("listtransactions"));
   }
 
   @Override
-  public List<Transaction> listTransactions(String account) throws BitcoinRpcException {
+  public List<Transaction> listTransactions(String account) throws BitcoinRPCException {
     return new TransactionListMapWrapper((List) query("listtransactions", account));
   }
 
   @Override
-  public List<Transaction> listTransactions(String account, int count) throws BitcoinRpcException {
+  public List<Transaction> listTransactions(String account, int count) throws BitcoinRPCException {
     return new TransactionListMapWrapper((List) query("listtransactions", account, count));
   }
 
   @Override
-  public List<Transaction> listTransactions(String account, int count, int from) throws BitcoinRpcException {
+  public List<Transaction> listTransactions(String account, int count, int from) throws BitcoinRPCException {
     return new TransactionListMapWrapper((List) query("listtransactions", account, count, from));
   }
 
@@ -1596,86 +1603,86 @@ public class BitcoinJSONRPCClient implements BitcoindRpcClient {
   }
 
   @Override
-  public List<Unspent> listUnspent() throws BitcoinRpcException {
+  public List<Unspent> listUnspent() throws BitcoinRPCException {
     return new UnspentListWrapper((List) query("listunspent"));
   }
 
   @Override
-  public List<Unspent> listUnspent(int minConf) throws BitcoinRpcException {
+  public List<Unspent> listUnspent(int minConf) throws BitcoinRPCException {
     return new UnspentListWrapper((List) query("listunspent", minConf));
   }
 
   @Override
-  public List<Unspent> listUnspent(int minConf, int maxConf) throws BitcoinRpcException {
+  public List<Unspent> listUnspent(int minConf, int maxConf) throws BitcoinRPCException {
     return new UnspentListWrapper((List) query("listunspent", minConf, maxConf));
   }
 
   @Override
-  public List<Unspent> listUnspent(int minConf, int maxConf, String... addresses) throws BitcoinRpcException {
+  public List<Unspent> listUnspent(int minConf, int maxConf, String... addresses) throws BitcoinRPCException {
     return new UnspentListWrapper((List) query("listunspent", minConf, maxConf, addresses));
   }
 
   @Override
-  public String move(String fromAccount, String toBitcoinAddress, double amount) throws BitcoinRpcException {
+  public String move(String fromAccount, String toBitcoinAddress, double amount) throws BitcoinRPCException {
     return (String) query("move", fromAccount, toBitcoinAddress, amount);
   }
 
   @Override
-  public String move(String fromAccount, String toBitcoinAddress, double amount, int minConf) throws BitcoinRpcException {
+  public String move(String fromAccount, String toBitcoinAddress, double amount, int minConf) throws BitcoinRPCException {
     return (String) query("move", fromAccount, toBitcoinAddress, amount, minConf);
   }
 
   @Override
-  public String move(String fromAccount, String toBitcoinAddress, double amount, int minConf, String comment) throws BitcoinRpcException {
+  public String move(String fromAccount, String toBitcoinAddress, double amount, int minConf, String comment) throws BitcoinRPCException {
     return (String) query("move", fromAccount, toBitcoinAddress, amount, minConf, comment);
   }
 
   @Override
-  public String sendFrom(String fromAccount, String toBitcoinAddress, double amount) throws BitcoinRpcException {
+  public String sendFrom(String fromAccount, String toBitcoinAddress, double amount) throws BitcoinRPCException {
     return (String) query("sendfrom", fromAccount, toBitcoinAddress, amount);
   }
 
   @Override
-  public String sendFrom(String fromAccount, String toBitcoinAddress, double amount, int minConf) throws BitcoinRpcException {
+  public String sendFrom(String fromAccount, String toBitcoinAddress, double amount, int minConf) throws BitcoinRPCException {
     return (String) query("sendfrom", fromAccount, toBitcoinAddress, amount, minConf);
   }
 
   @Override
-  public String sendFrom(String fromAccount, String toBitcoinAddress, double amount, int minConf, String comment) throws BitcoinRpcException {
+  public String sendFrom(String fromAccount, String toBitcoinAddress, double amount, int minConf, String comment) throws BitcoinRPCException {
     return (String) query("sendfrom", fromAccount, toBitcoinAddress, amount, minConf, comment);
   }
 
   @Override
-  public String sendFrom(String fromAccount, String toBitcoinAddress, double amount, int minConf, String comment, String commentTo) throws BitcoinRpcException {
+  public String sendFrom(String fromAccount, String toBitcoinAddress, double amount, int minConf, String comment, String commentTo) throws BitcoinRPCException {
     return (String) query("sendfrom", fromAccount, toBitcoinAddress, amount, minConf, comment, commentTo);
   }
 
   @Override
-  public String sendRawTransaction(String hex) throws BitcoinRpcException {
+  public String sendRawTransaction(String hex) throws BitcoinRPCException {
     return (String) query("sendrawtransaction", hex);
   }
 
   @Override
-  public String sendToAddress(String toAddress, double amount) throws BitcoinRpcException {
+  public String sendToAddress(String toAddress, double amount) throws BitcoinRPCException {
     return (String) query("sendtoaddress", toAddress, amount);
   }
 
   @Override
-  public String sendToAddress(String toAddress, double amount, String comment) throws BitcoinRpcException {
+  public String sendToAddress(String toAddress, double amount, String comment) throws BitcoinRPCException {
     return (String) query("sendtoaddress", toAddress, amount, comment);
   }
 
   @Override
-  public String sendToAddress(String toAddress, double amount, String comment, String commentTo) throws BitcoinRpcException {
+  public String sendToAddress(String toAddress, double amount, String comment, String commentTo) throws BitcoinRPCException {
     return (String) query("sendtoaddress", toAddress, amount, comment, commentTo);
   }
 
-  public String signRawTransaction(String hex) throws BitcoinRpcException {
+  public String signRawTransaction(String hex) throws BitcoinRPCException {
     return signRawTransaction(hex, null, null, "ALL");
   }
 
   @Override
-  public String signRawTransaction(String hex, List<ExtendedTxInput> inputs, List<String> privateKeys) throws BitcoinRpcException{
+  public String signRawTransaction(String hex, List<ExtendedTxInput> inputs, List<String> privateKeys) throws BitcoinRPCException{
     return signRawTransaction(hex, inputs, privateKeys, "ALL");
   }
 
@@ -1701,17 +1708,17 @@ public class BitcoinJSONRPCClient implements BitcoindRpcClient {
     if ((Boolean) result.get("complete"))
       return (String) result.get("hex");
     else
-      throw new BitcoinRpcException("Incomplete");
+      throw new BitcoinRPCException("Incomplete");
   }
 
-  public RawTransaction decodeRawTransaction(String hex) throws BitcoinRpcException {
+  public RawTransaction decodeRawTransaction(String hex) throws BitcoinRPCException {
     Map result = (Map) query("decoderawtransaction", hex);
     RawTransaction rawTransaction = new RawTransactionImpl(result);
     return rawTransaction.vOut().get(0).transaction();
   }
 
   @Override
-  public AddressValidationResult validateAddress(String address) throws BitcoinRpcException {
+  public AddressValidationResult validateAddress(String address) throws BitcoinRPCException {
     final Map validationResult = (Map) query("validateaddress", address);
     return new AddressValidationResult() {
 
@@ -1801,22 +1808,22 @@ public class BitcoinJSONRPCClient implements BitcoindRpcClient {
 ////        System.out.println(b.listReceivedByAddress());
 //    }
   @Override
-  public double getEstimateFee(int nBlocks) throws BitcoinRpcException {
+  public double getEstimateFee(int nBlocks) throws BitcoinRPCException {
     return ((Number) query("estimatefee", nBlocks)).doubleValue();
   }
 
   @Override
-  public double getEstimatePriority(int nBlocks) throws BitcoinRpcException {
+  public double getEstimatePriority(int nBlocks) throws BitcoinRPCException {
     return ((Number) query("estimatepriority", nBlocks)).doubleValue();
   }
 
   @Override
-  public void invalidateBlock(String hash) throws BitcoinRpcException {
+  public void invalidateBlock(String hash) throws BitcoinRPCException {
     query("invalidateblock", hash);
   }
 
   @Override
-  public void reconsiderBlock(String hash) throws BitcoinRpcException {
+  public void reconsiderBlock(String hash) throws BitcoinRPCException {
     query("reconsiderblock", hash);
 
   }
@@ -1925,7 +1932,7 @@ public class BitcoinJSONRPCClient implements BitcoindRpcClient {
   }
 
   @Override
-  public List<PeerInfoResult> getPeerInfo() throws BitcoinRpcException {
+  public List<PeerInfoResult> getPeerInfo() throws BitcoinRPCException {
     final List<Map> l = (List<Map>) query("getpeerinfo");
 //    final List<PeerInfoResult> res = new ArrayList<>(l.size());
 //    for (Map m : l)
@@ -1951,22 +1958,22 @@ public class BitcoinJSONRPCClient implements BitcoindRpcClient {
   }
 
   @Override
-  public String getRawChangeAddress() throws BitcoinRpcException {
+  public String getRawChangeAddress() throws BitcoinRPCException {
     return (String) query("getrawchangeaddress");
   }
 
   @Override
-  public long getConnectionCount() throws BitcoinRpcException {
+  public long getConnectionCount() throws BitcoinRPCException {
     return (long) query("getconnectioncount");
   }
 
   @Override
-  public double getUnconfirmedBalance() throws BitcoinRpcException {
+  public double getUnconfirmedBalance() throws BitcoinRPCException {
     return (double) query("getunconfirmedbalance");
   }
 
   @Override
-  public double getDifficulty() throws BitcoinRpcException {
+  public double getDifficulty() throws BitcoinRPCException {
     if (query("getdifficulty") instanceof Long) {
       return ((Long) query("getdifficulty")).doubleValue();
     } else {
@@ -1975,17 +1982,17 @@ public class BitcoinJSONRPCClient implements BitcoindRpcClient {
   }
 
   @Override
-  public NetTotals getNetTotals() throws BitcoinRpcException {
+  public NetTotals getNetTotals() throws BitcoinRPCException {
     return new NetTotalsImpl((Map) query("getnettotals"));
   }
 
   @Override
-  public DecodedScript decodeScript(String hex) throws BitcoinRpcException {
+  public DecodedScript decodeScript(String hex) throws BitcoinRPCException {
     return new DecodedScriptImpl((Map) query("decodescript", hex));
   }
 
   @Override
-  public void ping() throws BitcoinRpcException {
+  public void ping() throws BitcoinRPCException {
     query("ping");
   }
 
@@ -1997,12 +2004,12 @@ public class BitcoinJSONRPCClient implements BitcoindRpcClient {
 
 
   @Override
-  public double getNetworkHashPs() throws BitcoinRpcException {
+  public double getNetworkHashPs() throws BitcoinRPCException {
     return (Double)query("getnetworkhashps");
   }
 
   @Override
-  public boolean setTxFee(BigDecimal amount) throws BitcoinRpcException {
+  public boolean setTxFee(BigDecimal amount) throws BitcoinRPCException {
     return (boolean) query("settxfee", amount);
   }
 
@@ -2010,73 +2017,73 @@ public class BitcoinJSONRPCClient implements BitcoindRpcClient {
    *
    * @param node example: "192.168.0.6:8333"
    * @param command must be either "add", "remove" or "onetry"
-   * @throws BitcoinRpcException
+   * @throws BitcoinRPCException
    */
   @Override
-  public void addNode(String node, String command) throws BitcoinRpcException {
+  public void addNode(String node, String command) throws BitcoinRPCException {
     query("addnode", node, command);
   }
 
   @Override
-  public void backupWallet(String destination) throws BitcoinRpcException {
+  public void backupWallet(String destination) throws BitcoinRPCException {
     query("backupwallet", destination);
   }
 
   @Override
-  public String signMessage(String bitcoinAdress, String message) throws BitcoinRpcException {
+  public String signMessage(String bitcoinAdress, String message) throws BitcoinRPCException {
     return (String) query("signmessage", bitcoinAdress, message);
   }
 
   @Override
-  public void dumpWallet(String filename) throws BitcoinRpcException {
+  public void dumpWallet(String filename) throws BitcoinRPCException {
     query("dumpwallet", filename);
   }
 
   @Override
-  public void importWallet(String filename) throws BitcoinRpcException {
+  public void importWallet(String filename) throws BitcoinRPCException {
     query("dumpwallet", filename);
   }
 
   @Override
-  public void keyPoolRefill() throws BitcoinRpcException {
+  public void keyPoolRefill() throws BitcoinRPCException {
     keyPoolRefill(100); //default is 100 if you don't send anything
   }
 
-  public void keyPoolRefill(long size) throws BitcoinRpcException {
+  public void keyPoolRefill(long size) throws BitcoinRPCException {
     query("keypoolrefill", size);
   }
 
   @Override
-  public BigDecimal getReceivedByAccount(String account) throws BitcoinRpcException {
+  public BigDecimal getReceivedByAccount(String account) throws BitcoinRPCException {
     return getReceivedByAccount(account, 1);
   }
 
-  public BigDecimal getReceivedByAccount(String account, int minConf) throws BitcoinRpcException {
+  public BigDecimal getReceivedByAccount(String account, int minConf) throws BitcoinRPCException {
     return new BigDecimal((String)query("getreceivedbyaccount", account, minConf));
   }
 
   @Override
-  public void encryptWallet(String passPhrase) throws BitcoinRpcException {
+  public void encryptWallet(String passPhrase) throws BitcoinRPCException {
     query("encryptwallet", passPhrase);
   }
 
   @Override
-  public void walletPassPhrase(String passPhrase, long timeOut) throws BitcoinRpcException {
+  public void walletPassPhrase(String passPhrase, long timeOut) throws BitcoinRPCException {
     query("walletpassphrase", passPhrase, timeOut);
   }
 
   @Override
-  public boolean verifyMessage(String bitcoinAddress, String signature, String message) throws BitcoinRpcException {
+  public boolean verifyMessage(String bitcoinAddress, String signature, String message) throws BitcoinRPCException {
     return (boolean) query("verifymessage", bitcoinAddress, signature, message);
   }
 
   @Override
-  public String addMultiSigAddress(int nRequired, List<String> keyObject) throws BitcoinRpcException {
+  public String addMultiSigAddress(int nRequired, List<String> keyObject) throws BitcoinRPCException {
     return (String) query("addmultisigaddress", nRequired, keyObject);
   }
 
   @Override
-  public String addMultiSigAddress(int nRequired, List<String> keyObject, String account) throws BitcoinRpcException {
+  public String addMultiSigAddress(int nRequired, List<String> keyObject, String account) throws BitcoinRPCException {
     return (String) query("addmultisigaddress", nRequired, keyObject, account);
   }
 
@@ -2100,13 +2107,19 @@ public class BitcoinJSONRPCClient implements BitcoindRpcClient {
   }
 
   @Override
-  public TxOut getTxOut(String txId, long vout) throws BitcoinRpcException {
+  public TxOut getTxOut(String txId, long vout) throws BitcoinRPCException {
     return new TxOutWrapper((Map) query("gettxout", txId, vout, true));
   }
 
-  public TxOut getTxOut(String txId, long vout, boolean includemempool) throws BitcoinRpcException {
+  public TxOut getTxOut(String txId, long vout, boolean includemempool) throws BitcoinRPCException {
     return new TxOutWrapper((Map) query("gettxout", txId, vout, includemempool));
   }
+
+	@Override
+	public List<Transaction> getTransactionDetails(String txId) throws BitcoinRPCException {
+		Map m = (Map) query("gettransaction", txId);
+		return new TransactionListMapWrapper((List)m.get("details"));
+	}
 
 
 }
